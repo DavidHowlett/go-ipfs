@@ -6,10 +6,10 @@ import (
 
 	cmds "github.com/ipfs/go-ipfs/commands"
 	unixfs "github.com/ipfs/go-ipfs/core/commands/unixfs"
-	evlog "github.com/ipfs/go-ipfs/thirdparty/eventlog"
+	logging "github.com/ipfs/go-ipfs/vendor/go-log-v1.0.0"
 )
 
-var log = evlog.Logger("core/commands")
+var log = logging.Logger("core/commands")
 
 type TestOutput struct {
 	Foo string
@@ -108,6 +108,7 @@ var rootSubcommands = map[string]*cmds.Command{
 	"resolve":   ResolveCmd,
 	"stats":     StatsCmd,
 	"swarm":     SwarmCmd,
+	"tar":       TarCmd,
 	"tour":      tourCmd,
 	"file":      unixfs.UnixFSCmd,
 	"update":    UpdateCmd,

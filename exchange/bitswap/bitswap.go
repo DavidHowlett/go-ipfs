@@ -22,10 +22,10 @@ import (
 	wantlist "github.com/ipfs/go-ipfs/exchange/bitswap/wantlist"
 	peer "github.com/ipfs/go-ipfs/p2p/peer"
 	"github.com/ipfs/go-ipfs/thirdparty/delay"
-	eventlog "github.com/ipfs/go-ipfs/thirdparty/eventlog"
+	logging "github.com/ipfs/go-ipfs/vendor/go-log-v1.0.0"
 )
 
-var log = eventlog.Logger("bitswap")
+var log = logging.Logger("bitswap")
 
 const (
 	// maxProvidersPerRequest specifies the maximum number of providers desired
@@ -151,7 +151,7 @@ func (bs *Bitswap) GetBlock(parent context.Context, k key.Key) (*blocks.Block, e
 
 	ctx, cancelFunc := context.WithCancel(parent)
 
-	ctx = eventlog.ContextWithLoggable(ctx, eventlog.Uuid("GetBlockRequest"))
+	ctx = logging.ContextWithLoggable(ctx, logging.Uuid("GetBlockRequest"))
 	log.Event(ctx, "Bitswap.GetBlockRequest.Start", &k)
 	defer log.Event(ctx, "Bitswap.GetBlockRequest.End", &k)
 
@@ -221,9 +221,14 @@ func (bs *Bitswap) GetBlocks(ctx context.Context, keys []key.Key) (<-chan *block
 	}
 }
 
+// CancelWant removes a given key from the wantlist
+func (bs *Bitswap) CancelWants(ks []key.Key) {
+	bs.wm.CancelWants(ks)
+}
+
 // HasBlock announces the existance of a block to this bitswap service. The
 // service will potentially notify its peers.
-func (bs *Bitswap) HasBlock(ctx context.Context, blk *blocks.Block) error {
+func (bs *Bitswap) HasBlock(blk *blocks.Block) error {
 	select {
 	case <-bs.process.Closing():
 		return errors.New("bitswap is closed")
@@ -241,8 +246,8 @@ func (bs *Bitswap) HasBlock(ctx context.Context, blk *blocks.Block) error {
 	select {
 	case bs.newBlocks <- blk:
 		// send block off to be reprovided
-	case <-ctx.Done():
-		return ctx.Err()
+	case <-bs.process.Closing():
+		return bs.process.Close()
 	}
 	return nil
 }
@@ -323,9 +328,7 @@ func (bs *Bitswap) ReceiveMessage(ctx context.Context, p peer.ID, incoming bsmsg
 			log.Event(ctx, "Bitswap.GetBlockRequest.End", &k)
 
 			log.Debugf("got block %s from %s", b, p)
-			hasBlockCtx, cancel := context.WithTimeout(ctx, hasBlockTimeout)
-			defer cancel()
-			if err := bs.HasBlock(hasBlockCtx, b); err != nil {
+			if err := bs.HasBlock(b); err != nil {
 				log.Warningf("ReceiveMessage HasBlock error: %s", err)
 			}
 		}(block)

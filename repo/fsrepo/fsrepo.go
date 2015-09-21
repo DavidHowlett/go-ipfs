@@ -23,10 +23,10 @@ import (
 	mfsr "github.com/ipfs/go-ipfs/repo/fsrepo/migrations"
 	serialize "github.com/ipfs/go-ipfs/repo/fsrepo/serialize"
 	dir "github.com/ipfs/go-ipfs/thirdparty/dir"
-	"github.com/ipfs/go-ipfs/thirdparty/eventlog"
 	u "github.com/ipfs/go-ipfs/util"
 	util "github.com/ipfs/go-ipfs/util"
 	ds2 "github.com/ipfs/go-ipfs/util/datastore2"
+	logging "github.com/ipfs/go-ipfs/vendor/go-log-v1.0.0"
 )
 
 // version number that we are currently expecting to see
@@ -94,10 +94,6 @@ type FSRepo struct {
 	lockfile io.Closer
 	config   *config.Config
 	ds       ds.ThreadSafeDatastore
-	// tracked separately for use in Close; do not use directly.
-	leveldbDS      levelds.Datastore
-	metricsBlocks  measure.DatastoreCloser
-	metricsLevelDB measure.DatastoreCloser
 }
 
 var _ repo.Repo = (*FSRepo)(nil)
@@ -352,7 +348,7 @@ func (r *FSRepo) openDatastore() error {
 	leveldbPath := path.Join(r.path, leveldbDirectory)
 	var err error
 	// save leveldb reference so it can be neatly closed afterward
-	r.leveldbDS, err = levelds.NewDatastore(leveldbPath, &levelds.Options{
+	leveldbDS, err := levelds.NewDatastore(leveldbPath, &levelds.Options{
 		Compression: ldbopts.NoCompression,
 	})
 	if err != nil {
@@ -382,16 +378,16 @@ func (r *FSRepo) openDatastore() error {
 		id = fmt.Sprintf("uninitialized_%p", r)
 	}
 	prefix := "fsrepo." + id + ".datastore."
-	r.metricsBlocks = measure.New(prefix+"blocks", blocksDS)
-	r.metricsLevelDB = measure.New(prefix+"leveldb", r.leveldbDS)
+	metricsBlocks := measure.New(prefix+"blocks", blocksDS)
+	metricsLevelDB := measure.New(prefix+"leveldb", leveldbDS)
 	mountDS := mount.New([]mount.Mount{
 		{
 			Prefix:    ds.NewKey("/blocks"),
-			Datastore: r.metricsBlocks,
+			Datastore: metricsBlocks,
 		},
 		{
 			Prefix:    ds.NewKey("/"),
-			Datastore: r.metricsLevelDB,
+			Datastore: metricsLevelDB,
 		},
 	})
 	// Make sure it's ok to claim the virtual datastore from mount as
@@ -400,15 +396,15 @@ func (r *FSRepo) openDatastore() error {
 	// variants. This is the same dilemma as the `[].byte` attempt at
 	// introducing const types to Go.
 	var _ ds.ThreadSafeDatastore = blocksDS
-	var _ ds.ThreadSafeDatastore = r.leveldbDS
+	var _ ds.ThreadSafeDatastore = leveldbDS
 	r.ds = ds2.ClaimThreadSafe{mountDS}
 	return nil
 }
 
 func configureEventLoggerAtRepoPath(c *config.Config, repoPath string) {
-	eventlog.Configure(eventlog.LevelInfo)
-	eventlog.Configure(eventlog.LdJSONFormatter)
-	eventlog.Configure(eventlog.Output(eventlog.WriterGroup))
+	logging.Configure(logging.LevelInfo)
+	logging.Configure(logging.LdJSONFormatter)
+	logging.Configure(logging.Output(logging.WriterGroup))
 }
 
 // Close closes the FSRepo, releasing held resources.
@@ -420,13 +416,7 @@ func (r *FSRepo) Close() error {
 		return errors.New("repo is closed")
 	}
 
-	if err := r.metricsBlocks.Close(); err != nil {
-		return err
-	}
-	if err := r.metricsLevelDB.Close(); err != nil {
-		return err
-	}
-	if err := r.leveldbDS.Close(); err != nil {
+	if err := r.ds.(io.Closer).Close(); err != nil {
 		return err
 	}
 
@@ -436,7 +426,7 @@ func (r *FSRepo) Close() error {
 	//
 	// TODO It isn't part of the current contract, but callers may like for us
 	// to disable logging once the component is closed.
-	// eventlog.Configure(eventlog.Output(os.Stderr))
+	// logging.Configure(logging.Output(os.Stderr))
 
 	r.closed = true
 	if err := r.lockfile.Close(); err != nil {
