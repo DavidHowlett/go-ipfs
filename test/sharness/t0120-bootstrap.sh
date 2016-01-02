@@ -8,7 +8,7 @@
 BP1="/ip4/104.131.131.82/tcp/4001/ipfs/QmaCpDMGvV2BGHeYERUEnRQAwe3N8SzbUtfsmvsqQLuvuJ"
 BP2="/ip4/104.236.151.122/tcp/4001/ipfs/QmSoLju6m7xTh3DuokvT3886QRYqxAzb1kShaanJgW36yx"
 BP3="/ip4/104.236.176.52/tcp/4001/ipfs/QmSoLnSGccFuZQJzRadHn95W2CrSFmZuTdDWP8HXaHca9z"
-BP4="/ip4/104.236.179.241/tcp/4001/ipfs/QmSoLpPVmHKQ4XTPdz8tjDFgdeRFkpV8JgYq8JVJ69RrZm"
+BP4="/ip4/104.236.179.241/tcp/4001/ipfs/QmSoLPppuBtQSGwKDZT2M73ULpjvfd3aZ6ha4oFGL1KrGM"
 BP5="/ip4/104.236.76.40/tcp/4001/ipfs/QmSoLV4Bbm51jM9C4gDYZQ9Cy3U6aXMJDAbzgu2fzaDs64"
 BP6="/ip4/128.199.219.111/tcp/4001/ipfs/QmSoLSafTMBsPKadTEgaXctDQVcqN88CNLHXMkTNwMKPnu"
 BP7="/ip4/162.243.248.213/tcp/4001/ipfs/QmSoLueR4xBeUbY9WZ9xGUUxunbKWcrNFTDAadQJmocnWm"
@@ -34,7 +34,7 @@ test_bootstrap_list_cmd() {
   '
 
   test_expect_success "'ipfs bootstrap' output looks good" '
-    test_cmp list_actual list_expected
+    test_cmp list_expected list_actual
   '
 
   test_expect_success "'ipfs bootstrap list' succeeds" '
@@ -42,7 +42,7 @@ test_bootstrap_list_cmd() {
   '
 
   test_expect_success "'ipfs bootstrap list' output looks good" '
-    test_cmp list2_actual list_expected
+    test_cmp list_expected list2_actual
   '
 }
 
@@ -60,10 +60,10 @@ test_bootstrap_cmd() {
   '
 
   test_expect_success "'ipfs bootstrap add' output looks good" '
-    echo $BP1 >add_expected
-    echo $BP2 >>add_expected
-    echo $BP3 >>add_expected
-    test_cmp add_actual add_expected
+    echo $BP1 >add_expected &&
+    echo $BP2 >>add_expected &&
+    echo $BP3 >>add_expected &&
+    test_cmp add_expected add_actual
   '
 
   test_bootstrap_list_cmd $BP1 $BP2 $BP3
@@ -73,9 +73,9 @@ test_bootstrap_cmd() {
   '
 
   test_expect_success "'ipfs bootstrap rm' output looks good" '
-    echo $BP1 >rm_expected
-    echo $BP3 >>rm_expected
-    test_cmp rm_actual rm_expected
+    echo $BP1 >rm_expected &&
+    echo $BP3 >>rm_expected &&
+    test_cmp rm_expected rm_actual
   '
 
   test_bootstrap_list_cmd $BP2
@@ -85,16 +85,16 @@ test_bootstrap_cmd() {
   '
 
   test_expect_success "'ipfs bootstrap add --default' output has default BP" '
-    echo $BP1 >add2_expected
-    echo $BP2 >>add2_expected
-    echo $BP3 >>add2_expected
-    echo $BP4 >>add2_expected
-    echo $BP5 >>add2_expected
-    echo $BP6 >>add2_expected
-    echo $BP7 >>add2_expected
-    echo $BP8 >>add2_expected
-    echo $BP9 >>add2_expected
-    test_cmp add2_actual add2_expected
+    echo $BP1 >add2_expected &&
+    echo $BP2 >>add2_expected &&
+    echo $BP3 >>add2_expected &&
+    echo $BP4 >>add2_expected &&
+    echo $BP5 >>add2_expected &&
+    echo $BP6 >>add2_expected &&
+    echo $BP7 >>add2_expected &&
+    echo $BP8 >>add2_expected &&
+    echo $BP9 >>add2_expected &&
+    test_cmp add2_expected add2_actual
   '
 
   test_bootstrap_list_cmd $BP1 $BP2 $BP3 $BP4 $BP5 $BP6 $BP7 $BP8 $BP9
@@ -104,16 +104,16 @@ test_bootstrap_cmd() {
   '
 
   test_expect_success "'ipfs bootstrap rm' output looks good" '
-    echo $BP1 >rm2_expected
-    echo $BP2 >>rm2_expected
-    echo $BP3 >>rm2_expected
-    echo $BP4 >>rm2_expected
-    echo $BP5 >>rm2_expected
-    echo $BP6 >>rm2_expected
-    echo $BP7 >>rm2_expected
-    echo $BP8 >>rm2_expected
-    echo $BP9 >>rm2_expected
-    test_cmp rm2_actual rm2_expected
+    echo $BP1 >rm2_expected &&
+    echo $BP2 >>rm2_expected &&
+    echo $BP3 >>rm2_expected &&
+    echo $BP4 >>rm2_expected &&
+    echo $BP5 >>rm2_expected &&
+    echo $BP6 >>rm2_expected &&
+    echo $BP7 >>rm2_expected &&
+    echo $BP8 >>rm2_expected &&
+    echo $BP9 >>rm2_expected &&
+    test_cmp rm2_expected rm2_actual
   '
 
   test_bootstrap_list_cmd

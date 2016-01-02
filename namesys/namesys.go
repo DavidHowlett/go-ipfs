@@ -2,7 +2,9 @@ package namesys
 
 import (
 	"strings"
+	"time"
 
+	ds "github.com/ipfs/go-ipfs/Godeps/_workspace/src/github.com/jbenet/go-datastore"
 	context "github.com/ipfs/go-ipfs/Godeps/_workspace/src/golang.org/x/net/context"
 	ci "github.com/ipfs/go-ipfs/p2p/crypto"
 	path "github.com/ipfs/go-ipfs/path"
@@ -24,18 +26,20 @@ type mpns struct {
 }
 
 // NewNameSystem will construct the IPFS naming system based on Routing
-func NewNameSystem(r routing.IpfsRouting) NameSystem {
+func NewNameSystem(r routing.IpfsRouting, ds ds.Datastore, cachesize int) NameSystem {
 	return &mpns{
 		resolvers: map[string]resolver{
 			"dns":      newDNSResolver(),
 			"proquint": new(ProquintResolver),
-			"dht":      newRoutingResolver(r),
+			"dht":      NewRoutingResolver(r, cachesize),
 		},
 		publishers: map[string]Publisher{
-			"/ipns/": NewRoutingPublisher(r),
+			"/ipns/": NewRoutingPublisher(r, ds),
 		},
 	}
 }
+
+const DefaultResolverCacheTTL = time.Minute
 
 // Resolve implements Resolver.
 func (ns *mpns) Resolve(ctx context.Context, name string) (path.Path, error) {
@@ -80,4 +84,8 @@ func (ns *mpns) resolveOnce(ctx context.Context, name string) (path.Path, error)
 // Publish implements Publisher
 func (ns *mpns) Publish(ctx context.Context, name ci.PrivKey, value path.Path) error {
 	return ns.publishers["/ipns/"].Publish(ctx, name, value)
+}
+
+func (ns *mpns) PublishWithEOL(ctx context.Context, name ci.PrivKey, val path.Path, eol time.Time) error {
+	return ns.publishers["/ipns/"].PublishWithEOL(ctx, name, val, eol)
 }

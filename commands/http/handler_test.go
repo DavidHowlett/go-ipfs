@@ -6,12 +6,12 @@ import (
 	"net/url"
 	"testing"
 
-	cors "github.com/ipfs/go-ipfs/Godeps/_workspace/src/github.com/rs/cors"
-
 	cmds "github.com/ipfs/go-ipfs/commands"
 	ipfscmd "github.com/ipfs/go-ipfs/core/commands"
 	coremock "github.com/ipfs/go-ipfs/core/mock"
 )
+
+const AllowedExposedHeaders = "X-Stream-Output, X-Chunked-Output"
 
 func assertHeaders(t *testing.T, resHeaders http.Header, reqHeaders map[string]string) {
 	for name, value := range reqHeaders {
@@ -28,12 +28,10 @@ func assertStatus(t *testing.T, actual, expected int) {
 }
 
 func originCfg(origins []string) *ServerConfig {
-	return &ServerConfig{
-		CORSOpts: &cors.Options{
-			AllowedOrigins: origins,
-			AllowedMethods: []string{"GET", "PUT", "POST"},
-		},
-	}
+	cfg := NewServerConfig()
+	cfg.SetAllowedOrigins(origins...)
+	cfg.SetAllowedMethods("GET", "PUT", "POST")
+	return cfg
 }
 
 type testCase struct {
@@ -174,7 +172,7 @@ func TestAllowedOrigins(t *testing.T) {
 				ACAMethods:                      "",
 				ACACredentials:                  "",
 				"Access-Control-Max-Age":        "",
-				"Access-Control-Expose-Headers": "",
+				"Access-Control-Expose-Headers": AllowedExposedHeaders,
 			},
 			Code: http.StatusOK,
 		}
@@ -202,7 +200,7 @@ func TestWildcardOrigin(t *testing.T) {
 				ACAMethods:                      "",
 				ACACredentials:                  "",
 				"Access-Control-Max-Age":        "",
-				"Access-Control-Expose-Headers": "",
+				"Access-Control-Expose-Headers": AllowedExposedHeaders,
 			},
 			Code: http.StatusOK,
 		}
@@ -262,7 +260,7 @@ func TestAllowedReferer(t *testing.T) {
 				ACAMethods:                      "",
 				ACACredentials:                  "",
 				"Access-Control-Max-Age":        "",
-				"Access-Control-Expose-Headers": "",
+				"Access-Control-Expose-Headers": AllowedExposedHeaders,
 			},
 			Code: http.StatusOK,
 		}
@@ -290,7 +288,7 @@ func TestWildcardReferer(t *testing.T) {
 				ACAMethods:                      "",
 				ACACredentials:                  "",
 				"Access-Control-Max-Age":        "",
-				"Access-Control-Expose-Headers": "",
+				"Access-Control-Expose-Headers": AllowedExposedHeaders,
 			},
 			Code: http.StatusOK,
 		}

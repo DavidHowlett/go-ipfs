@@ -20,7 +20,7 @@ test_expect_success "'ipfs name publish' succeeds" '
 
 test_expect_success "publish output looks good" '
 	echo "Published to ${PEERID}: /ipfs/$HASH_WELCOME_DOCS" >expected1 &&
-	test_cmp publish_out expected1
+	test_cmp expected1 publish_out
 '
 
 test_expect_success "'ipfs name resolve' succeeds" '
@@ -28,8 +28,8 @@ test_expect_success "'ipfs name resolve' succeeds" '
 '
 
 test_expect_success "resolve output looks good" '
-	printf "/ipfs/%s" "$HASH_WELCOME_DOCS" >expected2 &&
-	test_cmp output expected2
+	printf "/ipfs/%s\n" "$HASH_WELCOME_DOCS" >expected2 &&
+	test_cmp expected2 output
 '
 
 # now test with a path
@@ -42,7 +42,7 @@ test_expect_success "'ipfs name publish' succeeds" '
 
 test_expect_success "publish a path looks good" '
 	echo "Published to ${PEERID}: /ipfs/$HASH_WELCOME_DOCS/help" >expected3 &&
-	test_cmp publish_out expected3
+	test_cmp expected3 publish_out
 '
 
 test_expect_success "'ipfs name resolve' succeeds" '
@@ -50,19 +50,26 @@ test_expect_success "'ipfs name resolve' succeeds" '
 '
 
 test_expect_success "resolve output looks good" '
-	printf "/ipfs/%s/help" "$HASH_WELCOME_DOCS" >expected4 &&
-	test_cmp output expected4
+	printf "/ipfs/%s/help\n" "$HASH_WELCOME_DOCS" >expected4 &&
+	test_cmp expected4 output
+'
+
+test_expect_success "ipfs cat on published content succeeds" '
+    ipfs cat "/ipfs/$HASH_WELCOME_DOCS/help" >expected &&
+    ipfs cat "/ipns/$PEERID" >actual &&
+    test_cmp expected actual
 '
 
 # publish with an explicit node ID
 
-test_expect_success "'ipfs name publish <local-id> <hash>' succeeds" '
+test_expect_failure "'ipfs name publish <local-id> <hash>' succeeds" '
 	PEERID=`ipfs id --format="<id>"` &&
 	test_check_peerid "${PEERID}" &&
+	echo ipfs name publish "${PEERID}" "/ipfs/$HASH_WELCOME_DOCS" &&
 	ipfs name publish "${PEERID}" "/ipfs/$HASH_WELCOME_DOCS" >actual_node_id_publish
 '
 
-test_expect_success "publish with our explicit node ID looks good" '
+test_expect_failure "publish with our explicit node ID looks good" '
 	echo "Published to ${PEERID}: /ipfs/$HASH_WELCOME_DOCS" >expected_node_id_publish &&
 	test_cmp expected_node_id_publish actual_node_id_publish
 '

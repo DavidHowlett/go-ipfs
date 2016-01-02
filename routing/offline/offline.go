@@ -13,7 +13,7 @@ import (
 	routing "github.com/ipfs/go-ipfs/routing"
 	pb "github.com/ipfs/go-ipfs/routing/dht/pb"
 	record "github.com/ipfs/go-ipfs/routing/record"
-	logging "github.com/ipfs/go-ipfs/vendor/go-log-v1.0.0"
+	logging "github.com/ipfs/go-ipfs/vendor/QmQg1J6vikuXF9oDvm4wpdeAUvvkVEKW1EYDw9HhTMnP2b/go-log"
 )
 
 var log = logging.Logger("offlinerouting")
@@ -65,6 +65,27 @@ func (c *offlineRouting) GetValue(ctx context.Context, key key.Key) ([]byte, err
 	}
 
 	return rec.GetValue(), nil
+}
+
+func (c *offlineRouting) GetValues(ctx context.Context, key key.Key, _ int) ([]routing.RecvdVal, error) {
+	v, err := c.datastore.Get(key.DsKey())
+	if err != nil {
+		return nil, err
+	}
+
+	byt, ok := v.([]byte)
+	if !ok {
+		return nil, errors.New("value stored in datastore not []byte")
+	}
+	rec := new(pb.Record)
+	err = proto.Unmarshal(byt, rec)
+	if err != nil {
+		return nil, err
+	}
+
+	return []routing.RecvdVal{
+		{Val: rec.GetValue()},
+	}, nil
 }
 
 func (c *offlineRouting) FindProviders(ctx context.Context, key key.Key) ([]peer.PeerInfo, error) {

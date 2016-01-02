@@ -10,7 +10,7 @@ import (
 	"strings"
 
 	u "github.com/ipfs/go-ipfs/util"
-	logging "github.com/ipfs/go-ipfs/vendor/go-log-v1.0.0"
+	logging "github.com/ipfs/go-ipfs/vendor/QmQg1J6vikuXF9oDvm4wpdeAUvvkVEKW1EYDw9HhTMnP2b/go-log"
 )
 
 var log = logging.Logger("config")
@@ -23,13 +23,13 @@ type Config struct {
 	Mounts           Mounts                // local node's mount points
 	Version          Version               // local node's version management
 	Discovery        Discovery             // local node's discovery mechanisms
+	Ipns             Ipns                  // Ipns settings
 	Bootstrap        []string              // local nodes's bootstrap peer addresses
 	Tour             Tour                  // local node's tour position
 	Gateway          Gateway               // local node's gateway server options
 	SupernodeRouting SupernodeClientConfig // local node's routing servers (if SupernodeRouting enabled)
 	API              API                   // local node's API settings
 	Swarm            SwarmConfig
-	Log              Log
 }
 
 const (

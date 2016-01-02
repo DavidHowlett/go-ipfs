@@ -17,7 +17,7 @@ test_expect_success "ipfs version succeeds" '
 '
 
 test_expect_success "ipfs version output looks good" '
-	cat version.txt | egrep "^ipfs version [0-9]+\.[0-9]+\.[0-9]" >/dev/null ||
+	egrep "^ipfs version [0-9]+\.[0-9]+\.[0-9]" version.txt >/dev/null ||
 	test_fsh cat version.txt
 '
 
@@ -26,9 +26,37 @@ test_expect_success "ipfs help succeeds" '
 '
 
 test_expect_success "ipfs help output looks good" '
-	cat help.txt | egrep -i "^Usage:" >/dev/null &&
-	cat help.txt | egrep "ipfs .* <command>" >/dev/null ||
+	egrep -i "^Usage:" help.txt >/dev/null &&
+	egrep "ipfs .* <command>" help.txt >/dev/null ||
 	test_fsh cat help.txt
+'
+
+test_expect_success "'ipfs commands' succeeds" '
+	ipfs commands >commands.txt
+'
+
+test_expect_success "'ipfs commands' output looks good" '
+	grep "ipfs add" commands.txt &&
+	grep "ipfs daemon" commands.txt &&
+	grep "ipfs update" commands.txt
+'
+
+test_expect_success "All commands accept --help" '
+	while read -r cmd
+	do
+		echo "running: $cmd --help"
+		$cmd --help </dev/null >/dev/null || return
+	done <commands.txt
+'
+
+test_expect_success "'ipfs commands --flags' succeeds" '
+	ipfs commands --flags >commands.txt
+'
+
+test_expect_success "'ipfs commands --flags' output looks good" '
+	grep "ipfs pin add --recursive / ipfs pin add -r" commands.txt &&
+	grep "ipfs id --format / ipfs id -f" commands.txt &&
+	grep "ipfs repo gc --quiet / ipfs repo gc -q" commands.txt
 '
 
 test_done

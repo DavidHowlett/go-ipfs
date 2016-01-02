@@ -55,6 +55,7 @@ test_expect_success "'ipfs pin rm' output looks good" '
 '
 
 test_expect_failure "ipfs repo gc fully reverse ipfs add" '
+    ipfs repo gc &&
     random 100000 41 >gcfile &&
     disk_usage "$IPFS_PATH/blocks" >expected &&
     hash=`ipfs add -q gcfile` &&
@@ -74,20 +75,28 @@ test_expect_success "file no longer pinned" '
 	test_sort_cmp expected2 actual2
 '
 
-test_expect_success "recursively pin afile" '
+test_expect_success "recursively pin afile(default action)" '
 	HASH=`ipfs add -q afile` &&
+	ipfs pin add "$HASH"
+'
+
+test_expect_success "recursively pin rm afile (default action)" '
+	ipfs pin rm "$HASH"
+'
+
+test_expect_success "recursively pin afile" '
 	ipfs pin add -r "$HASH"
 '
 
 test_expect_success "pinning directly should fail now" '
 	echo "Error: pin: $HASH already pinned recursively" >expected3 &&
-	test_must_fail ipfs pin add "$HASH" 2>actual3 &&
+	test_must_fail ipfs pin add -r=false "$HASH" 2>actual3 &&
 	test_cmp expected3 actual3
 '
 
-test_expect_success "'ipfs pin rm <hash>' should fail" '
+test_expect_success "'ipfs pin rm -r=false <hash>' should fail" '
 	echo "Error: $HASH is pinned recursively" >expected4 &&
-	test_must_fail ipfs pin rm "$HASH" 2>actual4 &&
+	test_must_fail ipfs pin rm -r=false "$HASH" 2>actual4 &&
 	test_cmp expected4 actual4
 '
 
@@ -95,7 +104,7 @@ test_expect_success "remove recursive pin, add direct" '
 	echo "unpinned $HASH" >expected5 &&
 	ipfs pin rm -r "$HASH" >actual5 &&
 	test_cmp expected5 actual5 &&
-	ipfs pin add "$HASH"
+	ipfs pin add -r=false "$HASH"
 '
 
 test_expect_success "remove direct pin" '
@@ -142,7 +151,7 @@ test_expect_success "pin something directly" '
 	test_cmp expected9 actual9  &&
 
 	echo "pinned $DIRECTPIN directly" >expected10 &&
-	ipfs pin add "$DIRECTPIN" >actual10 &&
+	ipfs pin add -r=false "$DIRECTPIN" >actual10 &&
 	test_cmp expected10 actual10
 '
 
@@ -176,10 +185,11 @@ test_expect_success "'ipfs refs --unique' is correct" '
 	cd uniques &&
 	echo "content1" > file1 &&
 	echo "content1" > file2 &&
-	ROOT=$(ipfs add -r -q . | tail -n1) &&
+	ipfs add -r -q . > ../add_output &&
+	ROOT=$(tail -n1 ../add_output) &&
 	ipfs refs --unique $ROOT >expected &&
 	ipfs add -q file1 >unique_hash &&
-	test_cmp expected unique_hash
+	test_cmp expected unique_hash || test_fsh cat ../add_output
 '
 
 test_expect_success "'ipfs refs --unique --recursive' is correct" '
@@ -188,11 +198,12 @@ test_expect_success "'ipfs refs --unique --recursive' is correct" '
 	echo "c1" > a/b/f1 &&
 	echo "c1" > a/b/c/f1 &&
 	echo "c2" > a/b/c/f2 &&
-	ROOT=$(ipfs add -r -q a | tail -n1) &&
+	ipfs add -r -q a >add_output &&
+	ROOT=$(tail -n1 add_output) &&
 	ipfs refs --unique --recursive $ROOT >refs_output &&
 	wc -l refs_output | sed "s/^ *//g" >line_count &&
 	echo "4 refs_output" >expected &&
-	test_cmp expected line_count
+	test_cmp expected line_count || test_fsh cat add_output || test_fsh cat refs_output
 '
 
 test_expect_success "'ipfs refs --recursive (bigger)'" '
@@ -206,16 +217,19 @@ test_expect_success "'ipfs refs --recursive (bigger)'" '
 	cp -r b b2 && mv b2 b/b2 &&
 	cp -r b b3 && mv b3 b/b3 &&
 	cp -r b b4 && mv b4 b/b4 &&
-	hash=$(ipfs add -r -q b | tail -n1) &&
-	ipfs refs -r "$hash" | wc -l | sed "s/^ *//g" >actual &&
-	echo "79" >expected &&
-	test_cmp expected actual
+	ipfs add -r -q b >add_output &&
+	hash=$(tail -n1 add_output) &&
+	ipfs refs -r "$hash" >refs_output &&
+	wc -l refs_output | sed "s/^ *//g" >actual &&
+	echo "79 refs_output" >expected &&
+	test_cmp expected actual || test_fsh cat add_output || test_fsh cat refs_output
 '
 
 test_expect_success "'ipfs refs --unique --recursive (bigger)'" '
-	ipfs refs -r "$hash" | sort | uniq >expected &&
-	ipfs refs -r -u "$hash" | sort >actual &&
-	test_cmp expected actual
+	ipfs refs -r "$hash" >refs_output &&
+	sort refs_output | uniq >expected &&
+	ipfs refs -r -u "$hash" >actual &&
+	test_sort_cmp expected actual || test_fsh cat refs_output
 '
 
 test_kill_ipfs_daemon

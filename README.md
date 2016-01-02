@@ -12,6 +12,14 @@ Please put all issues regarding IPFS _design_ in the
 [ipfs repo issues](https://github.com/ipfs/ipfs/issues).
 Please put all issues regarding go IPFS _implementation_ in [this repo](https://github.com/ipfs/go-ipfs/issues).
 
+## Security Issues
+
+The IPFS protocol and its implementations are still in heavy development. This means that there may be problems in our protocols, or there may be mistakes in our implementations. And -- though IPFS is not production-ready yet -- many people are already running nodes in their machines. So we take security vulnerabilities very seriously. If you discover a security issue, please bring it to our attention right away!
+
+If you find a vulnerability that may affect live deployments -- for example, by exposing a remote execution exploit -- please send your report privately to security@ipfs.io. Please DO NOT file a public issue.
+
+If the issue is a protocol weakness that cannot be immediately exploited or something not yet deployed, just discuss it openly.
+
 ## Install
 
 The canonical download instructions for IPFS are over at: http://ipfs.io/docs/install
@@ -35,7 +43,7 @@ From there:
 
 ### Prerequisite: Install Go
 
-First, you'll need go. If you don't have it: [Download Go 1.4+](https://golang.org/dl/).
+First, you'll need go. If you don't have it: [Download Go 1.5.2+](https://golang.org/dl/).
 
 You'll need to add Go's bin directories to your `$PATH` environment variable e.g., by adding these lines to your `/etc/profile` (for a system-wide installation) or `$HOME/.profile`:
 ```
@@ -68,6 +76,11 @@ dependencies as well.
 * Shell command completion is available in `misc/completion/ipfs-completion.bash`. Read [docs/command-completion.md](docs/command-completion.md) to learn how to install it.
 * See the [init examples](https://github.com/ipfs/examples/tree/master/examples/init) for how to connect IPFS to systemd or whatever init system your distro uses.
 
+### Updating
+ipfs has an updating tool that can be accessed through `ipfs update`. The tool is
+not installed alongside ipfs in order to keep that logic independent of the main
+codebase. To install ipfs update, either [download it here](https://gobuilder.me/github.com/ipfs/ipfs-update)
+or install it from source with `go get -u github.com/ipfs/ipfs-update`.
 
 ## Usage
 
@@ -154,6 +167,11 @@ ipfs files that will persist when you restart the container.
 
     export ipfs_staging=</absolute/path/to/somewhere/>
     export ipfs_data=</absolute/path/to/somewhere_else/>
+    
+Make sure docker can access these folders:
+
+    sudo chmod -R 777 /absolute/path/to/somewhere/
+    sudo chmod -R 777 /absolute/path/to/somewhere_else/
 
 Start a container running ipfs and expose ports 4001, 5001 and 8080:
 
@@ -211,22 +229,7 @@ file an issue of your own!
 
 ## Contributing
 
-go-ipfs is MIT licensed open source software. We welcome contributions big and
-small! Take a look at the [community contributing notes](https://github.com/ipfs/community/blob/master/contributing.md). Please make sure to check the
-[issues](https://github.com/ipfs/go-ipfs/issues). Search the closed ones
-before reporting things, and help us with the open ones.
-
-Guidelines:
-
-- see the [dev pseudo-roadmap](dev.md)
-- please adhere to the protocol described in [the main ipfs repo](https://github.com/ipfs/ipfs) and [paper](http://static.benet.ai/t/ipfs.pdf).
-- please make branches + pull-request, even if working on the main repository
-- ask questions or talk about things in [Issues](https://github.com/ipfs/go-ipfs/issues) or #ipfs on freenode.
-- ensure you are able to contribute (no legal issues please-- we'll probably setup a CLA)
-- run `go fmt` before pushing any code
-- run `golint` and `go vet` too -- some things (like protobuf files) are expected to fail.
-- if you'd like to work on ipfs part-time (20+ hrs/wk) or full-time (40+ hrs/wk), contact [@jbenet](https://github.com/jbenet)
-- have fun!
+Please see [Contribute.md](contribute.md)!
 
 ## Todo
 

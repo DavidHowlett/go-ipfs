@@ -8,11 +8,14 @@ import (
 	"time"
 
 	metrics "github.com/ipfs/go-ipfs/metrics"
+	mconn "github.com/ipfs/go-ipfs/metrics/conn"
 	inet "github.com/ipfs/go-ipfs/p2p/net"
+	conn "github.com/ipfs/go-ipfs/p2p/net/conn"
 	filter "github.com/ipfs/go-ipfs/p2p/net/filter"
 	addrutil "github.com/ipfs/go-ipfs/p2p/net/swarm/addr"
+	transport "github.com/ipfs/go-ipfs/p2p/net/transport"
 	peer "github.com/ipfs/go-ipfs/p2p/peer"
-	logging "github.com/ipfs/go-ipfs/vendor/go-log-v1.0.0"
+	logging "github.com/ipfs/go-ipfs/vendor/QmQg1J6vikuXF9oDvm4wpdeAUvvkVEKW1EYDw9HhTMnP2b/go-log"
 
 	ma "github.com/ipfs/go-ipfs/Godeps/_workspace/src/github.com/jbenet/go-multiaddr"
 	ps "github.com/ipfs/go-ipfs/Godeps/_workspace/src/github.com/jbenet/go-peerstream"
@@ -58,11 +61,18 @@ type Swarm struct {
 	backf dialbackoff
 	dialT time.Duration // mainly for tests
 
+	dialer *conn.Dialer
+
 	notifmu sync.RWMutex
 	notifs  map[inet.Notifiee]ps.Notifiee
 
+	transports []transport.Transport
+
 	// filters for addresses that shouldnt be dialed
 	Filters *filter.Filters
+
+	// file descriptor rate limited
+	fdRateLimit chan struct{}
 
 	proc goprocess.Process
 	ctx  context.Context
@@ -78,15 +88,22 @@ func NewSwarm(ctx context.Context, listenAddrs []ma.Multiaddr,
 		return nil, err
 	}
 
+	wrap := func(c transport.Conn) transport.Conn {
+		return mconn.WrapConn(bwc, c)
+	}
+
 	s := &Swarm{
-		swarm:   ps.NewSwarm(PSTransport),
-		local:   local,
-		peers:   peers,
-		ctx:     ctx,
-		dialT:   DialTimeout,
-		notifs:  make(map[inet.Notifiee]ps.Notifiee),
-		bwc:     bwc,
-		Filters: filter.NewFilters(),
+		swarm:       ps.NewSwarm(PSTransport),
+		local:       local,
+		peers:       peers,
+		ctx:         ctx,
+		dialT:       DialTimeout,
+		notifs:      make(map[inet.Notifiee]ps.Notifiee),
+		transports:  []transport.Transport{transport.NewTCPTransport()},
+		bwc:         bwc,
+		fdRateLimit: make(chan struct{}, concurrentFdDials),
+		Filters:     filter.NewFilters(),
+		dialer:      conn.NewDialer(local, peers.PrivKey(local), wrap),
 	}
 
 	// configure Swarm
@@ -97,7 +114,12 @@ func NewSwarm(ctx context.Context, listenAddrs []ma.Multiaddr,
 	prom.MustRegisterOrGet(peersTotal)
 	s.Notify((*metricsNotifiee)(s))
 
-	return s, s.listen(listenAddrs)
+	err = s.setupInterfaces(listenAddrs)
+	if err != nil {
+		return nil, err
+	}
+
+	return s, nil
 }
 
 func (s *Swarm) teardown() error {
@@ -130,7 +152,7 @@ func (s *Swarm) Listen(addrs ...ma.Multiaddr) error {
 		return err
 	}
 
-	return s.listen(addrs)
+	return s.setupInterfaces(addrs)
 }
 
 // Process returns the Process of the swarm

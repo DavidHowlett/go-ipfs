@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path"
+	"path/filepath"
 	"runtime"
 	"strings"
 
@@ -48,8 +49,10 @@ func Parse(input []string, stdin *os.File, root *cmds.Command) (cmds.Request, *c
 	}
 	req.SetArguments(stringArgs)
 
-	file := files.NewSliceFile("", "", fileArgs)
-	req.SetFiles(file)
+	if len(fileArgs) > 0 {
+		file := files.NewSliceFile("", "", fileArgs)
+		req.SetFiles(file)
+	}
 
 	err = cmd.CheckArguments(req)
 	if err != nil {
@@ -85,13 +88,28 @@ func parseOpts(args []string, root *cmds.Command) (
 			err = fmt.Errorf("Unrecognized option '%s'", name)
 			return false, err
 		}
-
+		// mustUse implies that you must use the argument given after the '='
+		// eg. -r=true means you must take true into consideration
+		//		mustUse == true in the above case
+		// eg. ipfs -r <file> means disregard <file> since there is no '='
+		//		mustUse == false in the above situation
+		//arg == nil implies the flag was specified without an argument
 		if optDef.Type() == cmds.Bool {
-			if mustUse {
-				return false, fmt.Errorf("Option '%s' takes no arguments, but was passed '%s'", name, *arg)
+			if arg == nil || !mustUse {
+				opts[name] = true
+				return false, nil
 			}
-			opts[name] = ""
-			return false, nil
+			argVal := strings.ToLower(*arg)
+			switch argVal {
+			case "true":
+				opts[name] = true
+				return true, nil
+			case "false":
+				opts[name] = false
+				return true, nil
+			default:
+				return true, fmt.Errorf("Option '%s' takes true/false arguments, but was passed '%s'", name, argVal)
+			}
 		} else {
 			if arg == nil {
 				return true, fmt.Errorf("Missing argument for option '%s'", name)
@@ -187,6 +205,13 @@ func parseOpts(args []string, root *cmds.Command) (
 				path = append(path, arg)
 				optDefs, err = root.GetOptions(path)
 				if err != nil {
+					return
+				}
+
+				// If we've come across an external binary call, pass all the remaining
+				// arguments on to it
+				if cmd.External {
+					stringVals = append(stringVals, args[i+1:]...)
 					return
 				}
 			} else {
@@ -342,7 +367,7 @@ func appendStdinAsString(args []string, stdin *os.File) ([]string, *os.File, err
 }
 
 func appendFile(args []files.File, inputs []string, argDef *cmds.Argument, recursive bool) ([]files.File, []string, error) {
-	fpath := inputs[0]
+	fpath := filepath.ToSlash(filepath.Clean(inputs[0]))
 
 	if fpath == "." {
 		cwd, err := os.Getwd()

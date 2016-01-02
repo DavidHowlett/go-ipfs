@@ -22,7 +22,7 @@ import (
 	wantlist "github.com/ipfs/go-ipfs/exchange/bitswap/wantlist"
 	peer "github.com/ipfs/go-ipfs/p2p/peer"
 	"github.com/ipfs/go-ipfs/thirdparty/delay"
-	logging "github.com/ipfs/go-ipfs/vendor/go-log-v1.0.0"
+	logging "github.com/ipfs/go-ipfs/vendor/QmQg1J6vikuXF9oDvm4wpdeAUvvkVEKW1EYDw9HhTMnP2b/go-log"
 )
 
 var log = logging.Logger("bitswap")
@@ -131,6 +131,7 @@ type Bitswap struct {
 	counterLk      sync.Mutex
 	blocksRecvd    int
 	dupBlocksRecvd int
+	dupDataRecvd   uint64
 }
 
 type blockRequest struct {
@@ -307,7 +308,7 @@ func (bs *Bitswap) ReceiveMessage(ctx context.Context, p peer.ID, incoming bsmsg
 	var keys []key.Key
 	for _, block := range iblocks {
 		if _, found := bs.wm.wl.Contains(block.Key()); !found {
-			log.Info("received un-asked-for block: %s", block)
+			log.Infof("received un-asked-for %s from %s", block, p)
 			continue
 		}
 		keys = append(keys, block.Key())
@@ -320,7 +321,7 @@ func (bs *Bitswap) ReceiveMessage(ctx context.Context, p peer.ID, incoming bsmsg
 		go func(b *blocks.Block) {
 			defer wg.Done()
 
-			if err := bs.updateReceiveCounters(b.Key()); err != nil {
+			if err := bs.updateReceiveCounters(b); err != nil {
 				return // ignore error, is either logged previously, or ErrAlreadyHaveBlock
 			}
 
@@ -338,17 +339,18 @@ func (bs *Bitswap) ReceiveMessage(ctx context.Context, p peer.ID, incoming bsmsg
 
 var ErrAlreadyHaveBlock = errors.New("already have block")
 
-func (bs *Bitswap) updateReceiveCounters(k key.Key) error {
+func (bs *Bitswap) updateReceiveCounters(b *blocks.Block) error {
 	bs.counterLk.Lock()
 	defer bs.counterLk.Unlock()
 	bs.blocksRecvd++
-	has, err := bs.blockstore.Has(k)
+	has, err := bs.blockstore.Has(b.Key())
 	if err != nil {
 		log.Infof("blockstore.Has error: %s", err)
 		return err
 	}
 	if err == nil && has {
 		bs.dupBlocksRecvd++
+		bs.dupDataRecvd += uint64(len(b.Data))
 	}
 
 	if has {

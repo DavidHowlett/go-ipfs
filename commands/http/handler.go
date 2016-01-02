@@ -1,22 +1,22 @@
 package http
 
 import (
-	"bufio"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
-	"os"
-	"runtime"
+	"runtime/debug"
 	"strconv"
 	"strings"
+	"sync"
 
 	cors "github.com/ipfs/go-ipfs/Godeps/_workspace/src/github.com/rs/cors"
 	context "github.com/ipfs/go-ipfs/Godeps/_workspace/src/golang.org/x/net/context"
+	"github.com/ipfs/go-ipfs/repo/config"
 
 	cmds "github.com/ipfs/go-ipfs/commands"
-	logging "github.com/ipfs/go-ipfs/vendor/go-log-v1.0.0"
+	logging "github.com/ipfs/go-ipfs/vendor/QmQg1J6vikuXF9oDvm4wpdeAUvvkVEKW1EYDw9HhTMnP2b/go-log"
 )
 
 var log = logging.Logger("commands/http")
@@ -35,7 +35,10 @@ type Handler struct {
 	corsHandler http.Handler
 }
 
-var ErrNotFound = errors.New("404 page not found")
+var (
+	ErrNotFound           = errors.New("404 page not found")
+	errApiVersionMismatch = errors.New("api version mismatch")
+)
 
 const (
 	StreamErrHeader        = "X-Stream-Error"
@@ -68,8 +71,11 @@ type ServerConfig struct {
 	// Headers is an optional map of headers that is written out.
 	Headers map[string][]string
 
-	// CORSOpts is a set of options for CORS headers.
-	CORSOpts *cors.Options
+	// cORSOpts is a set of options for CORS headers.
+	cORSOpts *cors.Options
+
+	// cORSOptsRWMutex is a RWMutex for read/write CORSOpts
+	cORSOptsRWMutex sync.RWMutex
 }
 
 func skipAPIHeader(h string) bool {
@@ -85,7 +91,7 @@ func skipAPIHeader(h string) bool {
 	}
 }
 
-func NewHandler(ctx cmds.Context, root *cmds.Command, cfg *ServerConfig) *Handler {
+func NewHandler(ctx cmds.Context, root *cmds.Command, cfg *ServerConfig) http.Handler {
 	if cfg == nil {
 		panic("must provide a valid ServerConfig")
 	}
@@ -93,7 +99,7 @@ func NewHandler(ctx cmds.Context, root *cmds.Command, cfg *ServerConfig) *Handle
 	// Wrap the internal handler with CORS handling-middleware.
 	// Create a handler for the API.
 	internal := internalHandler{ctx, root, cfg}
-	c := cors.New(*cfg.CORSOpts)
+	c := cors.New(*cfg.cORSOpts)
 	return &Handler{internal, c.Handler(internal)}
 }
 
@@ -107,13 +113,32 @@ func (i internalHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	defer func() {
 		if r := recover(); r != nil {
+			log.Error("A panic has occurred in the commands handler!")
 			log.Error(r)
 
-			buf := make([]byte, 4096)
-			n := runtime.Stack(buf, false)
-			fmt.Fprintln(os.Stderr, string(buf[:n]))
+			debug.PrintStack()
 		}
 	}()
+
+	// get the node's context to pass into the commands.
+	node, err := i.ctx.GetNode()
+	if err != nil {
+		s := fmt.Sprintf("cmds/http: couldn't GetNode(): %s", err)
+		http.Error(w, s, http.StatusInternalServerError)
+		return
+	}
+
+	ctx, cancel := context.WithCancel(node.Context())
+	defer cancel()
+	if cn, ok := w.(http.CloseNotifier); ok {
+		go func() {
+			select {
+			case <-cn.CloseNotify():
+			case <-ctx.Done():
+			}
+			cancel()
+		}()
+	}
 
 	if !allowOrigin(r, i.cfg) || !allowReferer(r, i.cfg) {
 		w.WriteHeader(http.StatusForbidden)
@@ -133,19 +158,8 @@ func (i internalHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// get the node's context to pass into the commands.
-	node, err := i.ctx.GetNode()
-	if err != nil {
-		s := fmt.Sprintf("cmds/http: couldn't GetNode(): %s", err)
-		http.Error(w, s, http.StatusInternalServerError)
-		return
-	}
-
 	//ps: take note of the name clash - commands.Context != context.Context
 	req.SetInvocContext(i.ctx)
-
-	ctx, cancel := context.WithCancel(node.Context())
-	defer cancel()
 
 	err = req.SetRootContext(ctx)
 	if err != nil {
@@ -177,7 +191,11 @@ func guessMimeType(res cmds.Response) (string, error) {
 		return "", errors.New("no encoding option set")
 	}
 
-	return mimeTypes[enc], nil
+	if m, ok := mimeTypes[enc]; ok {
+		return m, nil
+	}
+
+	return mimeTypes[cmds.JSON], nil
 }
 
 func sendResponse(w http.ResponseWriter, r *http.Request, res cmds.Response, req cmds.Request) {
@@ -205,15 +223,18 @@ func sendResponse(w http.ResponseWriter, r *http.Request, res cmds.Response, req
 	}
 
 	h := w.Header()
+
+	// Set up our potential trailer
+	h.Set("Trailer", StreamErrHeader)
+
 	if res.Length() > 0 {
 		h.Set(contentLengthHeader, strconv.FormatUint(res.Length(), 10))
 	}
 
 	if _, ok := res.Output().(io.Reader); ok {
-		// we don't set the Content-Type for streams, so that browsers can MIME-sniff the type themselves
-		// we set this header so clients have a way to know this is an output stream
-		// (not marshalled command output)
-		mime = ""
+		// set streams output type to text to avoid issues with browsers rendering
+		// html pages on priveleged api ports
+		mime = "text/plain"
 		h.Set(streamHeader, "1")
 	}
 
@@ -224,98 +245,63 @@ func sendResponse(w http.ResponseWriter, r *http.Request, res cmds.Response, req
 		_, isChan = res.Output().(<-chan interface{})
 	}
 
-	streamChans, _, _ := req.Option("stream-channels").Bool()
 	if isChan {
 		h.Set(channelHeader, "1")
-		if streamChans {
-			// streaming output from a channel will always be json objects
-			mime = applicationJson
-		}
 	}
 
-	if mime != "" {
-		h.Set(contentTypeHeader, mime)
+	// catch-all, set to text as default
+	if mime == "" {
+		mime = "text/plain"
 	}
+
+	h.Set(contentTypeHeader, mime)
 	h.Set(transferEncodingHeader, "chunked")
+
+	// set 'allowed' headers
+	h.Set("Access-Control-Allow-Headers", "X-Stream-Output, X-Chunked-Output")
+	// expose those headers
+	h.Set("Access-Control-Expose-Headers", "X-Stream-Output, X-Chunked-Output")
 
 	if r.Method == "HEAD" { // after all the headers.
 		return
 	}
 
-	if err := writeResponse(status, w, out); err != nil {
-		if strings.Contains(err.Error(), "broken pipe") {
-			log.Info("client disconnect while writing stream ", err)
-			return
-		}
-
-		log.Error("error while writing stream ", err)
+	w.WriteHeader(status)
+	err = flushCopy(w, out)
+	if err != nil {
+		log.Error("err: ", err)
+		w.Header().Set(StreamErrHeader, sanitizedErrStr(err))
 	}
 }
 
-// Copies from an io.Reader to a http.ResponseWriter.
-// Flushes chunks over HTTP stream as they are read (if supported by transport).
-func writeResponse(status int, w http.ResponseWriter, out io.Reader) error {
-	// hijack the connection so we can write our own chunked output and trailers
-	hijacker, ok := w.(http.Hijacker)
+func flushCopy(w io.Writer, r io.Reader) error {
+	buf := make([]byte, 4096)
+	f, ok := w.(http.Flusher)
 	if !ok {
-		log.Error("Failed to create hijacker! cannot continue!")
-		return errors.New("Could not create hijacker")
-	}
-	conn, writer, err := hijacker.Hijack()
-	if err != nil {
+		_, err := io.Copy(w, r)
 		return err
 	}
-	defer conn.Close()
-
-	// write status
-	writer.WriteString(fmt.Sprintf("HTTP/1.1 %d %s\r\n", status, http.StatusText(status)))
-
-	// Write out headers
-	w.Header().Write(writer)
-
-	// end of headers
-	writer.WriteString("\r\n")
-
-	// write body
-	streamErr := writeChunks(out, writer)
-
-	// close body
-	writer.WriteString("0\r\n")
-
-	// if there was a stream error, write out an error trailer. hopefully
-	// the client will pick it up!
-	if streamErr != nil {
-		writer.WriteString(StreamErrHeader + ": " + sanitizedErrStr(streamErr) + "\r\n")
-	}
-	writer.WriteString("\r\n") // close response
-	writer.Flush()
-	return streamErr
-}
-
-func writeChunks(r io.Reader, w *bufio.ReadWriter) error {
-	buf := make([]byte, 32*1024)
 	for {
 		n, err := r.Read(buf)
-
-		if n > 0 {
-			length := fmt.Sprintf("%x\r\n", n)
-			w.WriteString(length)
-
-			_, err := w.Write(buf[0:n])
-			if err != nil {
-				return err
-			}
-
-			w.WriteString("\r\n")
-			w.Flush()
-		}
-
-		if err != nil && err != io.EOF {
+		switch err {
+		case io.EOF:
+			return nil
+		case nil:
+			// continue
+		default:
 			return err
 		}
-		if err == io.EOF {
-			break
+
+		nw, err := w.Write(buf[:n])
+		if err != nil {
+			return err
 		}
+
+		if nw != n {
+			return fmt.Errorf("http write failed to write full amount: %d != %d", nw, n)
+		}
+
+		f.Flush()
 	}
 	return nil
 }
@@ -325,6 +311,51 @@ func sanitizedErrStr(err error) string {
 	s = strings.Split(s, "\n")[0]
 	s = strings.Split(s, "\r")[0]
 	return s
+}
+
+func NewServerConfig() *ServerConfig {
+	cfg := new(ServerConfig)
+	cfg.cORSOpts = new(cors.Options)
+	return cfg
+}
+
+func (cfg ServerConfig) AllowedOrigins() []string {
+	cfg.cORSOptsRWMutex.RLock()
+	defer cfg.cORSOptsRWMutex.RUnlock()
+	return cfg.cORSOpts.AllowedOrigins
+}
+
+func (cfg *ServerConfig) SetAllowedOrigins(origins ...string) {
+	cfg.cORSOptsRWMutex.Lock()
+	defer cfg.cORSOptsRWMutex.Unlock()
+	cfg.cORSOpts.AllowedOrigins = origins
+}
+
+func (cfg *ServerConfig) AppendAllowedOrigins(origins ...string) {
+	cfg.cORSOptsRWMutex.Lock()
+	defer cfg.cORSOptsRWMutex.Unlock()
+	cfg.cORSOpts.AllowedOrigins = append(cfg.cORSOpts.AllowedOrigins, origins...)
+}
+
+func (cfg ServerConfig) AllowedMethods() []string {
+	cfg.cORSOptsRWMutex.RLock()
+	defer cfg.cORSOptsRWMutex.RUnlock()
+	return []string(cfg.cORSOpts.AllowedMethods)
+}
+
+func (cfg *ServerConfig) SetAllowedMethods(methods ...string) {
+	cfg.cORSOptsRWMutex.Lock()
+	defer cfg.cORSOptsRWMutex.Unlock()
+	if cfg.cORSOpts == nil {
+		cfg.cORSOpts = new(cors.Options)
+	}
+	cfg.cORSOpts.AllowedMethods = methods
+}
+
+func (cfg *ServerConfig) SetAllowCredentials(flag bool) {
+	cfg.cORSOptsRWMutex.Lock()
+	defer cfg.cORSOptsRWMutex.Unlock()
+	cfg.cORSOpts.AllowCredentials = flag
 }
 
 // allowOrigin just stops the request if the origin is not allowed.
@@ -338,8 +369,8 @@ func allowOrigin(r *http.Request, cfg *ServerConfig) bool {
 	if origin == "" {
 		return true
 	}
-
-	for _, o := range cfg.CORSOpts.AllowedOrigins {
+	origins := cfg.AllowedOrigins()
+	for _, o := range origins {
 		if o == "*" { // ok! you asked for it!
 			return true
 		}
@@ -380,7 +411,8 @@ func allowReferer(r *http.Request, cfg *ServerConfig) bool {
 	// check CORS ACAOs and pretend Referer works like an origin.
 	// this is valid for many (most?) sane uses of the API in
 	// other applications, and will have the desired effect.
-	for _, o := range cfg.CORSOpts.AllowedOrigins {
+	origins := cfg.AllowedOrigins()
+	for _, o := range origins {
 		if o == "*" { // ok! you asked for it!
 			return true
 		}
@@ -392,4 +424,22 @@ func allowReferer(r *http.Request, cfg *ServerConfig) bool {
 	}
 
 	return false
+}
+
+// apiVersionMatches checks whether the api client is running the
+// same version of go-ipfs. for now, only the exact same version of
+// client + server work. In the future, we should use semver for
+// proper API versioning! \o/
+func apiVersionMatches(r *http.Request) error {
+	clientVersion := r.UserAgent()
+	// skips check if client is not go-ipfs
+	if clientVersion == "" || !strings.Contains(clientVersion, "/go-ipfs/") {
+		return nil
+	}
+
+	daemonVersion := config.ApiVersion
+	if daemonVersion != clientVersion {
+		return fmt.Errorf("%s (%s != %s)", errApiVersionMismatch, daemonVersion, clientVersion)
+	}
+	return nil
 }

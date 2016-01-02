@@ -4,14 +4,17 @@ import (
 	"errors"
 	"time"
 
+	proto "github.com/ipfs/go-ipfs/Godeps/_workspace/src/github.com/gogo/protobuf/proto"
 	ds "github.com/ipfs/go-ipfs/Godeps/_workspace/src/github.com/jbenet/go-datastore"
 	ma "github.com/ipfs/go-ipfs/Godeps/_workspace/src/github.com/jbenet/go-multiaddr"
 	context "github.com/ipfs/go-ipfs/Godeps/_workspace/src/golang.org/x/net/context"
 	key "github.com/ipfs/go-ipfs/blocks/key"
 	peer "github.com/ipfs/go-ipfs/p2p/peer"
 	routing "github.com/ipfs/go-ipfs/routing"
+	dhtpb "github.com/ipfs/go-ipfs/routing/dht/pb"
+	u "github.com/ipfs/go-ipfs/util"
 	"github.com/ipfs/go-ipfs/util/testutil"
-	logging "github.com/ipfs/go-ipfs/vendor/go-log-v1.0.0"
+	logging "github.com/ipfs/go-ipfs/vendor/QmQg1J6vikuXF9oDvm4wpdeAUvvkVEKW1EYDw9HhTMnP2b/go-log"
 )
 
 var log = logging.Logger("mockrouter")
@@ -25,7 +28,16 @@ type client struct {
 // FIXME(brian): is this method meant to simulate putting a value into the network?
 func (c *client) PutValue(ctx context.Context, key key.Key, val []byte) error {
 	log.Debugf("PutValue: %s", key)
-	return c.datastore.Put(key.DsKey(), val)
+	rec := new(dhtpb.Record)
+	rec.Value = val
+	rec.Key = proto.String(string(key))
+	rec.TimeReceived = proto.String(u.FormatRFC3339(time.Now()))
+	data, err := proto.Marshal(rec)
+	if err != nil {
+		return err
+	}
+
+	return c.datastore.Put(key.DsKey(), data)
 }
 
 // FIXME(brian): is this method meant to simulate getting a value from the network?
@@ -41,7 +53,23 @@ func (c *client) GetValue(ctx context.Context, key key.Key) ([]byte, error) {
 		return nil, errors.New("could not cast value from datastore")
 	}
 
-	return data, nil
+	rec := new(dhtpb.Record)
+	err = proto.Unmarshal(data, rec)
+	if err != nil {
+		return nil, err
+	}
+
+	return rec.GetValue(), nil
+}
+
+func (c *client) GetValues(ctx context.Context, key key.Key, count int) ([]routing.RecvdVal, error) {
+	log.Debugf("GetValues: %s", key)
+	data, err := c.GetValue(ctx, key)
+	if err != nil {
+		return nil, err
+	}
+
+	return []routing.RecvdVal{{Val: data, From: c.peer.ID()}}, nil
 }
 
 func (c *client) FindProviders(ctx context.Context, key key.Key) ([]peer.PeerInfo, error) {

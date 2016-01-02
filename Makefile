@@ -5,6 +5,8 @@ else
 go_test=go test
 endif
 
+commit = `git rev-parse --short HEAD`
+ldflags = "-X "github.com/ipfs/go-ipfs/repo/config".CurrentCommit=$(commit)"
 
 all:
 	# no-op. try:
@@ -21,18 +23,18 @@ vendor: godep
 	godep save -r ./...
 
 install:
-	cd cmd/ipfs && go install
+	cd cmd/ipfs && go install -ldflags=$(ldflags)
 
 build:
-	cd cmd/ipfs && go build -i
+	cd cmd/ipfs && go build -i -ldflags=$(ldflags)
 
 nofuse:
-	cd cmd/ipfs && go install -tags nofuse
+	cd cmd/ipfs && go install -tags nofuse -ldflags=$(ldflags)
 
 ##############################################################
 # tests targets
 
-test: test_expensive
+test: test_expensive windows_build_check
 
 test_short: build test_go_short test_sharness_short
 
@@ -69,3 +71,8 @@ test_all_commits_travis:
 	git config --global user.name "IPFS BOT"
 	git fetch origin master:master
 	GIT_EDITOR=true git rebase -i --exec "make test" master
+
+# since we have CI for osx and linux but not windows, this should help
+windows_build_check:
+	GOOS=windows GOARCH=amd64 go build -o .test.ipfs.exe ./cmd/ipfs
+	rm .test.ipfs.exe

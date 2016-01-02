@@ -53,15 +53,15 @@ func Init(out io.Writer, nBitsForKeypair int) (*Config, error) {
 			Enabled:  true,
 			Interval: 10,
 		}},
-		Log: Log{
-			MaxSizeMB:  250,
-			MaxBackups: 1,
-		},
 
 		// setup the node mount points.
 		Mounts: Mounts{
 			IPFS: "/ipfs",
 			IPNS: "/ipns",
+		},
+
+		Ipns: Ipns{
+			ResolveCacheSize: 128,
 		},
 
 		// tracking ipfs version used to generate the init folder and adding
@@ -83,8 +83,11 @@ func datastoreConfig() (*Datastore, error) {
 		return nil, err
 	}
 	return &Datastore{
-		Path: dspath,
-		Type: "leveldb",
+		Path:               dspath,
+		Type:               "leveldb",
+		StorageMax:         "10GB",
+		StorageGCWatermark: 90, // 90%
+		GCPeriod:           "1h",
 	}, nil
 }
 

@@ -22,3 +22,16 @@ test_sort_cmp() {
 	sort "$2" >"$2_sorted" &&
 	test_cmp "$1_sorted" "$2_sorted"
 }
+
+# Quote arguments for sh eval
+shellquote() {
+	_space=''
+	for _arg
+	do
+		# On Mac OS, sed adds a newline character.
+		# With a printf wrapper the extra newline is removed.
+		printf "$_space'%s'" "$(printf "%s" "$_arg" | sed -e "s/'/'\\\\''/g;")"
+		_space=' '
+	done
+	printf '\n'
+}

@@ -14,7 +14,7 @@ import (
 	routing "github.com/ipfs/go-ipfs/routing"
 	pb "github.com/ipfs/go-ipfs/routing/dht/pb"
 	proxy "github.com/ipfs/go-ipfs/routing/supernode/proxy"
-	logging "github.com/ipfs/go-ipfs/vendor/go-log-v1.0.0"
+	logging "github.com/ipfs/go-ipfs/vendor/QmQg1J6vikuXF9oDvm4wpdeAUvvkVEKW1EYDw9HhTMnP2b/go-log"
 )
 
 var log = logging.Logger("supernode")
@@ -79,6 +79,22 @@ func (c *Client) GetValue(ctx context.Context, k key.Key) ([]byte, error) {
 		return nil, err
 	}
 	return response.Record.GetValue(), nil
+}
+
+func (c *Client) GetValues(ctx context.Context, k key.Key, _ int) ([]routing.RecvdVal, error) {
+	defer log.EventBegin(ctx, "getValue", &k).Done()
+	msg := pb.NewMessage(pb.Message_GET_VALUE, string(k), 0)
+	response, err := c.proxy.SendRequest(ctx, msg) // TODO wrap to hide the remote
+	if err != nil {
+		return nil, err
+	}
+
+	return []routing.RecvdVal{
+		{
+			Val:  response.Record.GetValue(),
+			From: c.local,
+		},
+	}, nil
 }
 
 func (c *Client) Provide(ctx context.Context, k key.Key) error {

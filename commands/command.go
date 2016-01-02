@@ -15,7 +15,7 @@ import (
 	"reflect"
 	"strings"
 
-	logging "github.com/ipfs/go-ipfs/vendor/go-log-v1.0.0"
+	logging "github.com/ipfs/go-ipfs/vendor/QmQg1J6vikuXF9oDvm4wpdeAUvvkVEKW1EYDw9HhTMnP2b/go-log"
 )
 
 var log = logging.Logger("command")
@@ -58,6 +58,10 @@ type Command struct {
 	PostRun    Function
 	Marshalers map[EncodingType]Marshaler
 	Helptext   HelpText
+
+	// External denotes that a command is actually an external binary.
+	// fewer checks and validations will be performed on such commands.
+	External bool
 
 	// Type describes the type of the output of the Command's Run Function.
 	// In precise terms, the value of Type is an instance of the return type of

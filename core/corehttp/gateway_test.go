@@ -7,12 +7,14 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	context "github.com/ipfs/go-ipfs/Godeps/_workspace/src/golang.org/x/net/context"
 	core "github.com/ipfs/go-ipfs/core"
 	coreunix "github.com/ipfs/go-ipfs/core/coreunix"
 	namesys "github.com/ipfs/go-ipfs/namesys"
 	ci "github.com/ipfs/go-ipfs/p2p/crypto"
+	id "github.com/ipfs/go-ipfs/p2p/protocol/identify"
 	path "github.com/ipfs/go-ipfs/path"
 	repo "github.com/ipfs/go-ipfs/repo"
 	config "github.com/ipfs/go-ipfs/repo/config"
@@ -34,6 +36,10 @@ func (m mockNamesys) ResolveN(ctx context.Context, name string, depth int) (valu
 }
 
 func (m mockNamesys) Publish(ctx context.Context, name ci.PrivKey, value path.Path) error {
+	return errors.New("not implemented for mockNamesys")
+}
+
+func (m mockNamesys) PublishWithEOL(ctx context.Context, name ci.PrivKey, value path.Path, _ time.Time) error {
 	return errors.New("not implemented for mockNamesys")
 }
 
@@ -90,6 +96,7 @@ func newTestServerAndNode(t *testing.T, ns mockNamesys) (*httptest.Server, *core
 
 	dh.Handler, err = makeHandler(n,
 		ts.Listener,
+		VersionOption(),
 		IPNSHostnameOption(),
 		GatewayOption(false),
 	)
@@ -208,6 +215,30 @@ func TestIPNSHostnameRedirect(t *testing.T) {
 	} else if hdr[0] != "/foo/" {
 		t.Errorf("location header is %v, expected /foo/", hdr[0])
 	}
+
+	// make request with prefix to directory containing index.html
+	req, err = http.NewRequest("GET", ts.URL+"/foo", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Host = "example.net"
+	req.Header.Set("X-Ipfs-Gateway-Prefix", "/prefix")
+
+	res, err = doWithoutRedirect(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// expect 302 redirect to same path, but with prefix and trailing slash
+	if res.StatusCode != 302 {
+		t.Errorf("status is %d, expected 302", res.StatusCode)
+	}
+	hdr = res.Header["Location"]
+	if len(hdr) < 1 {
+		t.Errorf("location header not present")
+	} else if hdr[0] != "/prefix/foo/" {
+		t.Errorf("location header is %v, expected /prefix/foo/", hdr[0])
+	}
 }
 
 func TestIPNSHostnameBacklinks(t *testing.T) {
@@ -277,7 +308,7 @@ func TestIPNSHostnameBacklinks(t *testing.T) {
 		t.Fatalf("expected file in directory listing")
 	}
 
-	// make request to directory listing
+	// make request to directory listing at root
 	req, err = http.NewRequest("GET", ts.URL, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -289,7 +320,7 @@ func TestIPNSHostnameBacklinks(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// expect correct backlinks
+	// expect correct backlinks at root
 	body, err = ioutil.ReadAll(res.Body)
 	if err != nil {
 		t.Fatalf("error reading response: %s", err)
@@ -335,5 +366,72 @@ func TestIPNSHostnameBacklinks(t *testing.T) {
 	}
 	if !strings.Contains(s, "<a href=\"/foo/bar/file.txt\">") {
 		t.Fatalf("expected file in directory listing")
+	}
+
+	// make request to directory listing with prefix
+	req, err = http.NewRequest("GET", ts.URL, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Host = "example.net"
+	req.Header.Set("X-Ipfs-Gateway-Prefix", "/prefix")
+
+	res, err = doWithoutRedirect(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// expect correct backlinks with prefix
+	body, err = ioutil.ReadAll(res.Body)
+	if err != nil {
+		t.Fatalf("error reading response: %s", err)
+	}
+	s = string(body)
+	t.Logf("body: %s\n", string(body))
+
+	if !strings.Contains(s, "Index of /prefix") {
+		t.Fatalf("expected a path in directory listing")
+	}
+	if !strings.Contains(s, "<a href=\"/prefix/\">") {
+		t.Fatalf("expected backlink in directory listing")
+	}
+	if !strings.Contains(s, "<a href=\"/prefix/file.txt\">") {
+		t.Fatalf("expected file in directory listing")
+	}
+}
+
+func TestVersion(t *testing.T) {
+	config.CurrentCommit = "theshortcommithash"
+
+	ns := mockNamesys{}
+	ts, _ := newTestServerAndNode(t, ns)
+	t.Logf("test server url: %s", ts.URL)
+	defer ts.Close()
+
+	req, err := http.NewRequest("GET", ts.URL+"/version", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	res, err := doWithoutRedirect(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, err := ioutil.ReadAll(res.Body)
+	if err != nil {
+		t.Fatalf("error reading response: %s", err)
+	}
+	s := string(body)
+
+	if !strings.Contains(s, "Commit: theshortcommithash") {
+		t.Fatalf("response doesn't contain commit:\n%s", s)
+	}
+
+	if !strings.Contains(s, "Client Version: "+id.ClientVersion) {
+		t.Fatalf("response doesn't contain client version:\n%s", s)
+	}
+
+	if !strings.Contains(s, "Protocol Version: "+id.IpfsVersion) {
+		t.Fatalf("response doesn't contain protocol version:\n%s", s)
 	}
 }

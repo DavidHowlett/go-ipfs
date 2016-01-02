@@ -98,10 +98,11 @@ test_expect_success "'ipfs add dir' succeeds" '
 	echo "some text 6" >dir1/dir2/dir4/file6 &&
 	echo "some text 2" >dir1/dir3/file2 &&
 	echo "some text 5" >dir1/dir3/file5 &&
-	ipfs add -q -r dir1 | tail -n1 >actual1 &&
+	ipfs add -q -r dir1 >actualall &&
+	tail -n1 actualall >actual1 &&
 	echo "$HASH_DIR1" >expected1 &&
 	ipfs repo gc && # remove the patch chaff
-	test_cmp actual1 expected1
+	test_cmp expected1 actual1
 '
 
 test_expect_success "objects are there" '
@@ -189,9 +190,9 @@ test_expect_success "none are pinned any more" '
 '
 
 test_expect_success "pin some directly and indirectly" '
-	ipfs pin add    "$HASH_DIR1"  >actual7 &&
-	ipfs pin add -r "$HASH_DIR2"  >>actual7 &&
-	ipfs pin add    "$HASH_FILE1" >>actual7 &&
+	ipfs pin add -r=false	"$HASH_DIR1"  >actual7 &&
+	ipfs pin add -r=true	"$HASH_DIR2"  >>actual7 &&
+	ipfs pin add -r=false	"$HASH_FILE1" >>actual7 &&
 	echo "pinned $HASH_DIR1 directly"	   >expected7 &&
 	echo "pinned $HASH_DIR2 recursively" >>expected7 &&
 	echo "pinned $HASH_FILE1 directly"	 >>expected7 &&
@@ -216,7 +217,7 @@ test_expect_success "'ipfs repo gc' succeeds" '
 	echo "removed $HASH_FILE3" > gc_out_exp2 &&
 	echo "removed $HASH_FILE5" >> gc_out_exp2 &&
 	echo "removed $HASH_DIR3" >> gc_out_exp2 &&
-	test_sort_cmp gc_out_actual2 gc_out_exp2
+	test_sort_cmp gc_out_exp2 gc_out_actual2
 '
 
 # use object links for HASH_DIR1 here because its children
@@ -231,7 +232,7 @@ test_expect_success "some objects are still there" '
 	ipfs ls "$HASH_DIR4"   >>actual8 &&
 	ipfs ls "$HASH_DIR2"   >>actual8 &&
 	ipfs object links "$HASH_DIR1" >>actual8 &&
-	test_cmp actual8 expected8
+	test_cmp expected8 actual8
 '
 
 # todo: make this faster somehow.

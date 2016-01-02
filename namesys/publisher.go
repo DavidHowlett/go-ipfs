@@ -7,15 +7,18 @@ import (
 	"time"
 
 	proto "github.com/ipfs/go-ipfs/Godeps/_workspace/src/github.com/gogo/protobuf/proto"
+	ds "github.com/ipfs/go-ipfs/Godeps/_workspace/src/github.com/jbenet/go-datastore"
 	context "github.com/ipfs/go-ipfs/Godeps/_workspace/src/golang.org/x/net/context"
 
 	key "github.com/ipfs/go-ipfs/blocks/key"
 	dag "github.com/ipfs/go-ipfs/merkledag"
 	pb "github.com/ipfs/go-ipfs/namesys/pb"
 	ci "github.com/ipfs/go-ipfs/p2p/crypto"
+	peer "github.com/ipfs/go-ipfs/p2p/peer"
 	path "github.com/ipfs/go-ipfs/path"
 	pin "github.com/ipfs/go-ipfs/pin"
 	routing "github.com/ipfs/go-ipfs/routing"
+	dhtpb "github.com/ipfs/go-ipfs/routing/dht/pb"
 	record "github.com/ipfs/go-ipfs/routing/record"
 	ft "github.com/ipfs/go-ipfs/unixfs"
 	u "github.com/ipfs/go-ipfs/util"
@@ -29,71 +32,184 @@ var ErrExpiredRecord = errors.New("expired record")
 // unknown validity type.
 var ErrUnrecognizedValidity = errors.New("unrecognized validity type")
 
+var PublishPutValTimeout = time.Minute
+
 // ipnsPublisher is capable of publishing and resolving names to the IPFS
 // routing system.
 type ipnsPublisher struct {
 	routing routing.IpfsRouting
+	ds      ds.Datastore
 }
 
 // NewRoutingPublisher constructs a publisher for the IPFS Routing name system.
-func NewRoutingPublisher(route routing.IpfsRouting) Publisher {
-	return &ipnsPublisher{routing: route}
+func NewRoutingPublisher(route routing.IpfsRouting, ds ds.Datastore) *ipnsPublisher {
+	if ds == nil {
+		panic("nil datastore")
+	}
+	return &ipnsPublisher{routing: route, ds: ds}
 }
 
 // Publish implements Publisher. Accepts a keypair and a value,
 // and publishes it out to the routing system
 func (p *ipnsPublisher) Publish(ctx context.Context, k ci.PrivKey, value path.Path) error {
 	log.Debugf("Publish %s", value)
+	return p.PublishWithEOL(ctx, k, value, time.Now().Add(time.Hour*24))
+}
 
-	data, err := createRoutingEntryData(k, value)
-	if err != nil {
-		return err
-	}
-	pubkey := k.GetPublic()
-	pkbytes, err := pubkey.Bytes()
-	if err != nil {
-		return err
-	}
+// PublishWithEOL is a temporary stand in for the ipns records implementation
+// see here for more details: https://github.com/ipfs/specs/tree/master/records
+func (p *ipnsPublisher) PublishWithEOL(ctx context.Context, k ci.PrivKey, value path.Path, eol time.Time) error {
 
-	nameb := u.Hash(pkbytes)
-	namekey := key.Key("/pk/" + string(nameb))
-
-	log.Debugf("Storing pubkey at: %s", namekey)
-	// Store associated public key
-	timectx, cancel := context.WithDeadline(ctx, time.Now().Add(time.Second*10))
-	defer cancel()
-	err = p.routing.PutValue(timectx, namekey, pkbytes)
+	id, err := peer.IDFromPrivateKey(k)
 	if err != nil {
 		return err
 	}
 
-	ipnskey := key.Key("/ipns/" + string(nameb))
+	_, ipnskey := IpnsKeysForID(id)
 
-	log.Debugf("Storing ipns entry at: %s", ipnskey)
-	// Store ipns entry at "/ipns/"+b58(h(pubkey))
-	timectx, cancel = context.WithDeadline(ctx, time.Now().Add(time.Second*10))
-	defer cancel()
-	if err := p.routing.PutValue(timectx, ipnskey, data); err != nil {
+	// get previous records sequence number
+	seqnum, err := p.getPreviousSeqNo(ctx, ipnskey)
+	if err != nil {
+		return err
+	}
+
+	// increment it
+	seqnum++
+
+	return PutRecordToRouting(ctx, k, value, seqnum, eol, p.routing, id)
+}
+
+func (p *ipnsPublisher) getPreviousSeqNo(ctx context.Context, ipnskey key.Key) (uint64, error) {
+	prevrec, err := p.ds.Get(ipnskey.DsKey())
+	if err != nil && err != ds.ErrNotFound {
+		// None found, lets start at zero!
+		return 0, err
+	}
+	var val []byte
+	if err == nil {
+		prbytes, ok := prevrec.([]byte)
+		if !ok {
+			return 0, fmt.Errorf("unexpected type returned from datastore: %#v", prevrec)
+		}
+		dhtrec := new(dhtpb.Record)
+		err := proto.Unmarshal(prbytes, dhtrec)
+		if err != nil {
+			return 0, err
+		}
+
+		val = dhtrec.GetValue()
+	} else {
+		// try and check the dht for a record
+		ctx, cancel := context.WithTimeout(ctx, time.Second*30)
+		defer cancel()
+
+		rv, err := p.routing.GetValue(ctx, ipnskey)
+		if err != nil {
+			// no such record found, start at zero!
+			return 0, nil
+		}
+
+		val = rv
+	}
+
+	e := new(pb.IpnsEntry)
+	err = proto.Unmarshal(val, e)
+	if err != nil {
+		return 0, err
+	}
+
+	return e.GetSequence(), nil
+}
+
+// setting the TTL on published records is an experimental feature.
+// as such, i'm using the context to wire it through to avoid changing too
+// much code along the way.
+func checkCtxTTL(ctx context.Context) (time.Duration, bool) {
+	v := ctx.Value("ipns-publish-ttl")
+	if v == nil {
+		return 0, false
+	}
+
+	d, ok := v.(time.Duration)
+	return d, ok
+}
+
+func PutRecordToRouting(ctx context.Context, k ci.PrivKey, value path.Path, seqnum uint64, eol time.Time, r routing.IpfsRouting, id peer.ID) error {
+	namekey, ipnskey := IpnsKeysForID(id)
+	entry, err := CreateRoutingEntryData(k, value, seqnum, eol)
+	if err != nil {
+		return err
+	}
+
+	ttl, ok := checkCtxTTL(ctx)
+	if ok {
+		entry.Ttl = proto.Uint64(uint64(ttl.Nanoseconds()))
+	}
+
+	err = PublishEntry(ctx, r, ipnskey, entry)
+	if err != nil {
+		return err
+	}
+
+	err = PublishPublicKey(ctx, r, namekey, k.GetPublic())
+	if err != nil {
 		return err
 	}
 
 	return nil
 }
 
-func createRoutingEntryData(pk ci.PrivKey, val path.Path) ([]byte, error) {
+func PublishPublicKey(ctx context.Context, r routing.IpfsRouting, k key.Key, pubk ci.PubKey) error {
+	log.Debugf("Storing pubkey at: %s", k)
+	pkbytes, err := pubk.Bytes()
+	if err != nil {
+		return err
+	}
+
+	// Store associated public key
+	timectx, cancel := context.WithTimeout(ctx, PublishPutValTimeout)
+	defer cancel()
+	err = r.PutValue(timectx, k, pkbytes)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func PublishEntry(ctx context.Context, r routing.IpfsRouting, ipnskey key.Key, rec *pb.IpnsEntry) error {
+	timectx, cancel := context.WithTimeout(ctx, PublishPutValTimeout)
+	defer cancel()
+
+	data, err := proto.Marshal(rec)
+	if err != nil {
+		return err
+	}
+
+	log.Debugf("Storing ipns entry at: %s", ipnskey)
+	// Store ipns entry at "/ipns/"+b58(h(pubkey))
+	if err := r.PutValue(timectx, ipnskey, data); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func CreateRoutingEntryData(pk ci.PrivKey, val path.Path, seq uint64, eol time.Time) (*pb.IpnsEntry, error) {
 	entry := new(pb.IpnsEntry)
 
 	entry.Value = []byte(val)
 	typ := pb.IpnsEntry_EOL
 	entry.ValidityType = &typ
-	entry.Validity = []byte(u.FormatRFC3339(time.Now().Add(time.Hour * 24)))
+	entry.Sequence = proto.Uint64(seq)
+	entry.Validity = []byte(u.FormatRFC3339(eol))
 
 	sig, err := pk.Sign(ipnsEntryDataForSig(entry))
 	if err != nil {
 		return nil, err
 	}
 	entry.Signature = sig
-	return proto.Marshal(entry)
+	return entry, nil
 }
 
 func ipnsEntryDataForSig(e *pb.IpnsEntry) []byte {
@@ -108,6 +224,60 @@ func ipnsEntryDataForSig(e *pb.IpnsEntry) []byte {
 var IpnsRecordValidator = &record.ValidChecker{
 	Func: ValidateIpnsRecord,
 	Sign: true,
+}
+
+func IpnsSelectorFunc(k key.Key, vals [][]byte) (int, error) {
+	var recs []*pb.IpnsEntry
+	for _, v := range vals {
+		e := new(pb.IpnsEntry)
+		err := proto.Unmarshal(v, e)
+		if err == nil {
+			recs = append(recs, e)
+		} else {
+			recs = append(recs, nil)
+		}
+	}
+
+	return selectRecord(recs, vals)
+}
+
+func selectRecord(recs []*pb.IpnsEntry, vals [][]byte) (int, error) {
+	var best_seq uint64
+	best_i := -1
+
+	for i, r := range recs {
+		if r == nil || r.GetSequence() < best_seq {
+			continue
+		}
+
+		if best_i == -1 || r.GetSequence() > best_seq {
+			best_seq = r.GetSequence()
+			best_i = i
+		} else if r.GetSequence() == best_seq {
+			rt, err := u.ParseRFC3339(string(r.GetValidity()))
+			if err != nil {
+				continue
+			}
+
+			bestt, err := u.ParseRFC3339(string(recs[best_i].GetValidity()))
+			if err != nil {
+				continue
+			}
+
+			if rt.After(bestt) {
+				best_i = i
+			} else if rt == bestt {
+				if bytes.Compare(vals[i], vals[best_i]) > 0 {
+					best_i = i
+				}
+			}
+		}
+	}
+	if best_i == -1 {
+		return 0, errors.New("no usable records in given set")
+	}
+
+	return best_i, nil
 }
 
 // ValidateIpnsRecord implements ValidatorFunc and verifies that the
@@ -162,4 +332,11 @@ func InitializeKeyspace(ctx context.Context, ds dag.DAGService, pub Publisher, p
 	}
 
 	return nil
+}
+
+func IpnsKeysForID(id peer.ID) (name, ipns key.Key) {
+	namekey := key.Key("/pk/" + id)
+	ipnskey := key.Key("/ipns/" + id)
+
+	return namekey, ipnskey
 }

@@ -30,7 +30,7 @@ import (
 	fsrepo "github.com/ipfs/go-ipfs/repo/fsrepo"
 	unit "github.com/ipfs/go-ipfs/thirdparty/unit"
 	ds2 "github.com/ipfs/go-ipfs/util/datastore2"
-	logging "github.com/ipfs/go-ipfs/vendor/go-log-v1.0.0"
+	logging "github.com/ipfs/go-ipfs/vendor/QmQg1J6vikuXF9oDvm4wpdeAUvvkVEKW1EYDw9HhTMnP2b/go-log"
 )
 
 var elog = logging.Logger("gc-client")
@@ -142,6 +142,7 @@ func sizeOfIthFile(i int64) int64 {
 }
 
 func runFileAddingWorker(n *core.IpfsNode) error {
+	errs := make(chan error)
 	go func() {
 		var i int64
 		for i = 1; i < math.MaxInt32; i++ {
@@ -149,17 +150,26 @@ func runFileAddingWorker(n *core.IpfsNode) error {
 			go func() {
 				defer pipew.Close()
 				if err := random.WritePseudoRandomBytes(sizeOfIthFile(i), pipew, *seed); err != nil {
-					log.Fatal(err)
+					errs <- err
 				}
 			}()
 			k, err := coreunix.Add(n, piper)
 			if err != nil {
-				log.Fatal(err)
+				errs <- err
 			}
 			log.Println("added file", "seed", *seed, "#", i, "key", k, "size", unit.Information(sizeOfIthFile(i)))
 			time.Sleep(1 * time.Second)
 		}
 	}()
+
+	var i int64
+	for i = 0; i < math.MaxInt32; i++ {
+		err := <-errs
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
+
 	return nil
 }
 
@@ -180,18 +190,20 @@ func runFileCattingWorker(ctx context.Context, n *core.IpfsNode) error {
 		return err
 	}
 
+	errs := make(chan error)
+
 	go func() {
 		defer dummy.Close()
 		var i int64 = 1
 		for {
 			buf := new(bytes.Buffer)
 			if err := random.WritePseudoRandomBytes(sizeOfIthFile(i), buf, *seed); err != nil {
-				log.Fatal(err)
+				errs <- err
 			}
 			// add to a dummy node to discover the key
 			k, err := coreunix.Add(dummy, bytes.NewReader(buf.Bytes()))
 			if err != nil {
-				log.Fatal(err)
+				errs <- err
 			}
 			e := elog.EventBegin(ctx, "cat", logging.LoggableF(func() map[string]interface{} {
 				return map[string]interface{}{
@@ -199,7 +211,7 @@ func runFileCattingWorker(ctx context.Context, n *core.IpfsNode) error {
 					"localPeer": n.Identity,
 				}
 			}))
-			if r, err := coreunix.Cat(n, k); err != nil {
+			if r, err := coreunix.Cat(ctx, n, k); err != nil {
 				e.Done()
 				log.Printf("failed to cat file. seed: %d #%d key: %s err: %s", *seed, i, k, err)
 			} else {
@@ -212,6 +224,12 @@ func runFileCattingWorker(ctx context.Context, n *core.IpfsNode) error {
 			time.Sleep(time.Second)
 		}
 	}()
+
+	err = <- errs
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	return nil
 }
 

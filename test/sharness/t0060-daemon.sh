@@ -60,7 +60,7 @@ test_expect_success "ipfs daemon output looks good" '
   echo "peer identity: $PEERID" >>expected_daemon &&
   echo "to get started, enter:" >>expected_daemon &&
   printf "\\n\\t$STARTFILE\\n\\n" >>expected_daemon &&
-  cat local_addrs | sed "s/^/Swarm listening on /" >>expected_daemon &&
+  sed "s/^/Swarm listening on /" local_addrs >>expected_daemon &&
   echo "API server listening on /ip4/127.0.0.1/tcp/5001" >>expected_daemon &&
   echo "Gateway (readonly) server listening on /ip4/127.0.0.1/tcp/8080" >>expected_daemon &&
   echo "Daemon is ready" >>expected_daemon &&
@@ -82,7 +82,7 @@ test_expect_success "ipfs version succeeds" '
 '
 
 test_expect_success "ipfs version output looks good" '
-	cat version.txt | egrep "^ipfs version [0-9]+\.[0-9]+\.[0-9]" >/dev/null ||
+	egrep "^ipfs version [0-9]+\.[0-9]+\.[0-9]" version.txt >/dev/null ||
 	test_fsh cat version.txt
 '
 
@@ -91,18 +91,33 @@ test_expect_success "ipfs help succeeds" '
 '
 
 test_expect_success "ipfs help output looks good" '
-	cat help.txt | egrep -i "^Usage:" >/dev/null &&
-	cat help.txt | egrep "ipfs .* <command>" >/dev/null ||
+	egrep -i "^Usage:" help.txt >/dev/null &&
+	egrep "ipfs .* <command>" help.txt >/dev/null ||
 	test_fsh cat help.txt
 '
 
-# check transport is encrypted
+# netcat (nc) is needed for the following test
+test_expect_success "nc is available" '
+	type nc >/dev/null
+'
 
+# check transport is encrypted
 test_expect_success "transport should be encrypted" '
   nc -w 5 localhost 4001 >swarmnc &&
   grep -q "AES-256,AES-128" swarmnc &&
   test_must_fail grep -q "/ipfs/identify" swarmnc ||
 	test_fsh cat swarmnc
+'
+
+test_expect_success "output from streaming commands works" '
+	test_expect_code 28 curl -m 2 http://localhost:5001/api/v0/stats/bw\?poll=true > statsout
+'
+
+test_expect_success "output looks good" '
+	grep TotalIn statsout > /dev/null &&
+	grep TotalOut statsout > /dev/null &&
+	grep RateIn statsout > /dev/null &&
+	grep RateOut statsout >/dev/null
 '
 
 # end same as in t0010

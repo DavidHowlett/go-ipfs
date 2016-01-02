@@ -1,6 +1,6 @@
 {
 	"ImportPath": "github.com/ipfs/go-ipfs",
-	"GoVersion": "go1.5",
+	"GoVersion": "go1.5.1",
 	"Packages": [
 		"./..."
 	],
@@ -15,13 +15,41 @@
 			"Rev": "75cd24fc2f2c2a2088577d12123ddee5f54e0675"
 		},
 		{
-			"ImportPath": "github.com/Sirupsen/logrus",
-			"Comment": "v0.7.3-2-g26709e2",
-			"Rev": "26709e2714106fb8ad40b773b711ebce25b78914"
+			"ImportPath": "github.com/StackExchange/wmi",
+			"Rev": "8730d7ed549382cb1f889a576a7223c137be7989"
+		},
+		{
+			"ImportPath": "github.com/alecthomas/kingpin",
+			"Comment": "v2.1.0-2-gaedd543",
+			"Rev": "aedd5430ecd39ba1396fee0c00308b494c552b1e"
+		},
+		{
+			"ImportPath": "github.com/alecthomas/template",
+			"Rev": "b867cc6ab45cece8143cfcc6fc9c77cf3f2c23c0"
+		},
+		{
+			"ImportPath": "github.com/alecthomas/units",
+			"Rev": "6b4e7dc5e3143b85ea77909c72caf89416fc2915"
+		},
+		{
+			"ImportPath": "github.com/anacrolix/jitter",
+			"Rev": "2ea5c18645100745b24e9f5cfc9b3f6f7eac51ef"
+		},
+		{
+			"ImportPath": "github.com/anacrolix/missinggo",
+			"Rev": "4e1ca5963308863b56c31863f60c394a7365ec29"
+		},
+		{
+			"ImportPath": "github.com/anacrolix/utp",
+			"Rev": "0bb24de92c268452fb9106ca4fb9302442ca0dee"
 		},
 		{
 			"ImportPath": "github.com/beorn7/perks/quantile",
 			"Rev": "b965b613227fddccbfffe13eae360ed3fa822f8d"
+		},
+		{
+			"ImportPath": "github.com/bradfitz/iter",
+			"Rev": "454541ec3da2a73fc34fd049b19ee5777bf19345"
 		},
 		{
 			"ImportPath": "github.com/bren2010/proquint",
@@ -72,12 +100,21 @@
 			"Rev": "00897f070f09f194c26d65afae734ba4c32404e8"
 		},
 		{
+			"ImportPath": "github.com/dustin/randbo",
+			"Rev": "7f1b564ca7242d22bcc6e2128beb90d9fa38b9f0"
+		},
+		{
 			"ImportPath": "github.com/facebookgo/atomicfile",
 			"Rev": "6f117f2e7f224fb03eb5e5fba370eade6e2b90c8"
 		},
 		{
 			"ImportPath": "github.com/fd/go-nat",
 			"Rev": "50e7633d5f27d81490026a13e5b92d2e42d8c6bb"
+		},
+		{
+			"ImportPath": "github.com/go-ole/go-ole",
+			"Comment": "v1.1.1-64-g4246eab",
+			"Rev": "4246eab2a27c71c143f965432ace52990308d362"
 		},
 		{
 			"ImportPath": "github.com/gogo/protobuf/io",
@@ -90,10 +127,6 @@
 		{
 			"ImportPath": "github.com/golang/protobuf/proto",
 			"Rev": "aece6fb931241ad332956db4f62798dfbea944b3"
-		},
-		{
-			"ImportPath": "github.com/h2so5/utp",
-			"Rev": "6ca83358f5c331028feb9b97c445e9c7354967b0"
 		},
 		{
 			"ImportPath": "github.com/hashicorp/golang-lru",
@@ -110,10 +143,6 @@
 		{
 			"ImportPath": "github.com/inconshreveable/go-update",
 			"Rev": "68f5725818189545231c1fd8694793d45f2fc529"
-		},
-		{
-			"ImportPath": "github.com/ipfs/go-log",
-			"Rev": "ee5cb9834b33bcf29689183e0323e328c8b8de29"
 		},
 		{
 			"ImportPath": "github.com/jackpal/go-nat-pmp",
@@ -149,7 +178,7 @@
 		},
 		{
 			"ImportPath": "github.com/jbenet/go-msgio",
-			"Rev": "b4f3f1e1c7ec0cbf2fe35d8a45d1c253d224dc72"
+			"Rev": "9399b44f6bf265b30bedaf2af8c0604bbc8d5275"
 		},
 		{
 			"ImportPath": "github.com/jbenet/go-multiaddr",
@@ -158,7 +187,7 @@
 		},
 		{
 			"ImportPath": "github.com/jbenet/go-multiaddr-net",
-			"Rev": "6b29a00b65526d23f534813eb5bfa64dfa281e4a"
+			"Rev": "4a8bd8f8baf45afcf2bb385bbc17e5208d5d4c71"
 		},
 		{
 			"ImportPath": "github.com/jbenet/go-multihash",
@@ -171,7 +200,7 @@
 		},
 		{
 			"ImportPath": "github.com/jbenet/go-peerstream",
-			"Rev": "cfdc29a19c1a209d548670f5c33c5cda2e040143"
+			"Rev": "f3ab20739a88aa79306dc039c1b5a39e7afa45d6"
 		},
 		{
 			"ImportPath": "github.com/jbenet/go-random",
@@ -262,6 +291,21 @@
 			"Rev": "7c7f2020c4c9491594b85767967f4619c2fa75f9"
 		},
 		{
+			"ImportPath": "github.com/shirou/gopsutil/common",
+			"Comment": "1.0.0-167-g6a274c3",
+			"Rev": "6a274c3628382ab316340478300f5282b89f7778"
+		},
+		{
+			"ImportPath": "github.com/shirou/gopsutil/disk",
+			"Comment": "1.0.0-167-g6a274c3",
+			"Rev": "6a274c3628382ab316340478300f5282b89f7778"
+		},
+		{
+			"ImportPath": "github.com/shirou/gopsutil/mem",
+			"Comment": "1.0.0-167-g6a274c3",
+			"Rev": "6a274c3628382ab316340478300f5282b89f7778"
+		},
+		{
 			"ImportPath": "github.com/steakknife/hamming",
 			"Comment": "0.0.10",
 			"Rev": "8bad99011016569c05320e51be39c648679c5b73"
@@ -281,6 +325,10 @@
 		{
 			"ImportPath": "github.com/whyrusleeping/chunker",
 			"Rev": "537e901819164627ca4bb5ce4e3faa8ce7956564"
+		},
+		{
+			"ImportPath": "github.com/whyrusleeping/go-logging",
+			"Rev": "128b9855511a4ea3ccbcf712695baf2bab72e134"
 		},
 		{
 			"ImportPath": "github.com/whyrusleeping/go-metrics",

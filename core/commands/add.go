@@ -68,7 +68,7 @@ remains to be implemented.
 		cmds.BoolOption(trickleOptionName, "t", "Use trickle-dag format for dag generation"),
 		cmds.BoolOption(onlyHashOptionName, "n", "Only chunk and hash - do not write to disk"),
 		cmds.BoolOption(wrapOptionName, "w", "Wrap files with a directory object"),
-		cmds.BoolOption(hiddenOptionName, "Include files that are hidden"),
+		cmds.BoolOption(hiddenOptionName, "H", "Include files that are hidden"),
 		cmds.StringOption(chunkerOptionName, "s", "chunking algorithm to use"),
 	},
 	PreRun: func(req cmds.Request) error {
@@ -89,6 +89,7 @@ remains to be implemented.
 			// see comment above
 			return nil
 		}
+
 		log.Debugf("Total size of file being added: %v\n", size)
 		req.Values()["size"] = size
 
@@ -100,6 +101,13 @@ remains to be implemented.
 			res.SetError(err, cmds.ErrNormal)
 			return
 		}
+		// check if repo will exceed storage limit if added
+		// TODO: this doesn't handle the case if the hashed file is already in blocks (deduplicated)
+		// TODO: conditional GC is disabled due to it is somehow not possible to pass the size to the daemon
+		//if err := corerepo.ConditionalGC(req.Context(), n, uint64(size)); err != nil {
+		//	res.SetError(err, cmds.ErrNormal)
+		//	return
+		//}
 
 		progress, _, _ := req.Option(progressOptionName).Bool()
 		trickle, _, _ := req.Option(trickleOptionName).Bool()
@@ -438,7 +446,7 @@ func (params *adder) addDir(file files.File) (*dag.Node, error) {
 		}
 
 		if node != nil {
-			_, name := path.Split(file.FileName())
+			name := path.Base(file.FileName())
 
 			err = tree.AddNodeLink(name, node)
 			if err != nil {
